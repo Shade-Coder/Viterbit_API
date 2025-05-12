@@ -1,2 +1,0 @@
-1,updated_after
-1,created_after

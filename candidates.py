@@ -144,7 +144,7 @@ RETRY_DELAY = 2
 PAGE_SIZE = 100
 CONCURRENT_REQUESTS = 100
 BATCH_SIZE = 100
-LIMIT_RECORDS =1000 # Número máximo de candidatos a recuperar (0 para recuperar todos)
+LIMIT_RECORDS =0 # Número máximo de candidatos a recuperar (0 para recuperar todos)
 
 # Configuración de Base de Datos
 SQL_SERVER = os.getenv('SQL_SERVER', 'localhost')
