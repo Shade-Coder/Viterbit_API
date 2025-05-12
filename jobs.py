@@ -273,8 +273,7 @@ def create_jobs_table():
             contract_type_id VARCHAR(50),
             occupation VARCHAR(50),
             external_id VARCHAR(100),
-            archived_at DATETIME,
-            custom_fields NVARCHAR(MAX)
+            archived_at DATETIME
         )
         """)
         
@@ -302,8 +301,6 @@ def create_jobs_table():
                 ALTER TABLE Jobs ADD owners_ids NVARCHAR(MAX);
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Jobs') AND name = 'applies_until')
                 ALTER TABLE Jobs ADD applies_until DATETIME;
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Jobs') AND name = 'custom_fields')
-                ALTER TABLE Jobs ADD custom_fields NVARCHAR(MAX);
         END
         """)
         
@@ -723,10 +720,13 @@ def flatten_job(job: Dict[str, Any]) -> Dict[str, Any]:
             except (ValueError, AttributeError):
                 return None
 
-        # Procesar skills
+        # Procesar skills - Asegurarse de que se manejen correctamente los strings
         skills = job.get('skills', [])
         if isinstance(skills, list):
-            skills_str = ', '.join(str(skill) for skill in skills)
+            # Convertir cada skill a string y eliminar espacios en blanco
+            skills_list = [str(skill).strip() for skill in skills if skill]
+            # Unir los skills con comas, asegurándose de que no haya espacios extra
+            skills_str = ', '.join(filter(None, skills_list))
         else:
             skills_str = ''
 
@@ -737,12 +737,8 @@ def flatten_job(job: Dict[str, Any]) -> Dict[str, Any]:
         else:
             owners_ids_str = ''
 
-        # Procesar custom_fields
-        custom_fields = job.get('custom_fields', [])
-        if isinstance(custom_fields, list):
-            custom_fields_str = json.dumps(custom_fields, ensure_ascii=False)
-        else:
-            custom_fields_str = ''
+        # Obtener hiring_plan_requisition_id - Asegurarse de que se obtenga el valor correcto
+        hiring_plan_requisition_id = str(job.get('hiring_plan_requisition_id', '')).strip()
 
         # Crear diccionario base con los campos exactos del JSON
         flattened = {
@@ -773,12 +769,11 @@ def flatten_job(job: Dict[str, Any]) -> Dict[str, Any]:
             'experience_years': int(job.get('experience_years', 0)),
             'owners_ids': owners_ids_str,
             'applies_until': format_date(job.get('applies_until')),
-            'hiring_plan_requisition_id': str(job.get('hiring_plan_requisition_id', '')),
+            'hiring_plan_requisition_id': hiring_plan_requisition_id,
             'contract_type_id': str(job.get('contract_type_id', '')),
             'occupation': str(job.get('occupation', '')),
             'external_id': str(job.get('external_id', '')),
-            'archived_at': format_date(job.get('archived_at')),
-            'custom_fields': custom_fields_str
+            'archived_at': format_date(job.get('archived_at'))
         }
         
         return flattened

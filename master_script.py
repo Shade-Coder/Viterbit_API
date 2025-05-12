@@ -6,6 +6,10 @@ import os
 import pyodbc
 import locale
 from io import StringIO
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 # Configurar codificación para Windows
 if sys.platform == 'win32':
@@ -69,9 +73,9 @@ def create_database():
             try:
                 conn_str = (
                     f'DRIVER={driver};'
-                    'SERVER=localhost;'
-                    'Trusted_Connection=yes;'
-                )
+            'SERVER=localhost;'
+            'Trusted_Connection=yes;'
+        )
                 conn = pyodbc.connect(conn_str, autocommit=True)  # Habilitar autocommit
                 break
             except pyodbc.Error:
@@ -427,21 +431,50 @@ class LogCapture:
         # Cerrar el buffer
         self.captured_output.close()
 
+def check_api_key():
+    """
+    Verifica si la API key existe y es válida en el archivo .env.
+    
+    Returns:
+        bool: True si la API key existe y es válida, False en caso contrario
+    """
+    try:
+        # Obtener la API key desde las variables de entorno
+        api_key = os.getenv('VITERBIT_API_KEY')
+        
+        # Verificar si la API key está vacía o es None
+        if not api_key or api_key.strip() == "":
+            print("\n[ERROR] La API key está vacía o no está configurada en el archivo .env")
+            print("Por favor, configura una API key válida en el archivo .env")
+            return False
+            
+        return True
+    except Exception as e:
+        print(f"\n[ERROR] Error al verificar la API key: {str(e)}")
+        print("Asegúrate de que el archivo .env existe y contiene la variable API_KEY")
+        return False
+
 def main():
     """
     Función principal que orquesta la ejecución de todos los scripts.
     
     Esta función:
-    1. Crea la base de datos y tablas necesarias
-    2. Define el orden de ejecución de los scripts
-    3. Crea un archivo de log con timestamp
-    4. Ejecuta cada script en secuencia
-    5. Registra éxitos y fallos
-    6. Genera un resumen de la ejecución
-    7. Actualiza la última fecha de ejecución en la base de datos SOLO si todos los scripts
+    1. Verifica la API key
+    2. Crea la base de datos y tablas necesarias
+    3. Define el orden de ejecución de los scripts
+    4. Crea un archivo de log con timestamp
+    5. Ejecuta cada script en secuencia
+    6. Registra éxitos y fallos
+    7. Genera un resumen de la ejecución
+    8. Actualiza la última fecha de ejecución en la base de datos SOLO si todos los scripts
        se ejecutaron correctamente
-    8. Maneja errores y proporciona feedback detallado
+    9. Maneja errores y proporciona feedback detallado
     """
+    # Verificar API key primero
+    if not check_api_key():
+        print("\n[ERROR] No se puede continuar sin una API key válida.")
+        return
+        
     # Lista de scripts a ejecutar en orden
     scripts = [
         "users.py",
@@ -499,27 +532,25 @@ def main():
         resumen = "\n" + "="*80 + "\n"
         resumen += "RESUMEN DE EJECUCIÓN\n"
         resumen += "="*80 + "\n"
-        resumen += f"Scripts ejecutados exitosamente: {exitos}/{len(scripts)}\n"
+        resumen += f"Scripts ejecutados: {len(scripts)}\n"
+        resumen += f"Scripts exitosos: {exitos}\n"
+        resumen += f"Scripts fallidos: {len(fallos)}\n"
+        
         if fallos:
-            resumen += "\nScripts con fallos:\n"
+            resumen += "\nScripts que fallaron:\n"
             for script in fallos:
-                resumen += f"  - {script}\n"
+                resumen += f"- {script}\n"
+        
         resumen += f"\nTiempo total de ejecución: {minutos} minutos y {segundos} segundos\n"
         resumen += "="*80 + "\n"
         
         print(resumen)
         
-        # Actualizar la última ejecución SOLO si todos los scripts se ejecutaron correctamente
-        if exitos == len(scripts):
-            try:
-                update_last_execution()
-                print("\n[OK] Fecha de última ejecución actualizada en la base de datos")
-            except Exception as e:
-                error_msg = f"\n[ERROR] Error al actualizar la fecha de última ejecución: {str(e)}\n"
-                print(error_msg)
+        # Actualizar última ejecución solo si todos los scripts fueron exitosos
+        if not fallos:
+            update_last_execution()
         else:
-            msg = "\n[WARNING] No se actualizará la fecha de última ejecución debido a errores en los scripts\n"
-            print(msg)
+            print("\n[ADVERTENCIA] No se actualizará la última fecha de ejecución debido a errores en algunos scripts.")
 
 if __name__ == "__main__":
     main()

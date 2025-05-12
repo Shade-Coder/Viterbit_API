@@ -144,7 +144,7 @@ RETRY_DELAY = 2
 PAGE_SIZE = 100
 CONCURRENT_REQUESTS = 100
 BATCH_SIZE = 100
-MAX_RECUPERACION =0 # Número máximo de candidatos a recuperar (0 para recuperar todos)
+LIMIT_RECORDS =1000 # Número máximo de candidatos a recuperar (0 para recuperar todos)
 
 # Configuración de Base de Datos
 SQL_SERVER = os.getenv('SQL_SERVER', 'localhost')
@@ -1145,10 +1145,10 @@ async def get_all_candidates_simple(session: aiohttp.ClientSession) -> List[Dict
         # Calcular el número total de páginas basado en el total_count
         total_pages = (total_count + PAGE_SIZE - 1) // PAGE_SIZE
         
-        # Si MAX_RECUPERACION está configurado, ajustar el total de páginas
-        if MAX_RECUPERACION > 0:
-            total_pages = min(total_pages, (MAX_RECUPERACION + PAGE_SIZE - 1) // PAGE_SIZE)
-            log_message(f"📊 Límite de recuperación configurado: {MAX_RECUPERACION} candidatos", True)
+        # Si LIMIT_RECORDS está configurado, ajustar el total de páginas
+        if LIMIT_RECORDS > 0:
+            total_pages = min(total_pages, (LIMIT_RECORDS + PAGE_SIZE - 1) // PAGE_SIZE)
+            log_message(f"📊 Límite de recuperación configurado: {LIMIT_RECORDS} candidatos", True)
         
         log_message(f"📊 Total de páginas a procesar: {total_pages}", True)
         
@@ -1196,22 +1196,22 @@ async def get_all_candidates_simple(session: aiohttp.ClientSession) -> List[Dict
             log_message(f"📈 Progreso total: {len(processed_pages)}/{total_pages} páginas procesadas ({len(processed_pages)/total_pages*100:.1f}%)", True)
             
             # Verificar si hemos alcanzado el límite de recuperación
-            if MAX_RECUPERACION > 0 and len(all_candidates) >= MAX_RECUPERACION:
-                log_message(f"✅ Límite de recuperación alcanzado: {MAX_RECUPERACION} candidatos", True)
-                all_candidates = all_candidates[:MAX_RECUPERACION]
+            if LIMIT_RECORDS > 0 and len(all_candidates) >= LIMIT_RECORDS:
+                log_message(f"✅ Límite de recuperación alcanzado: {LIMIT_RECORDS} candidatos", True)
+                all_candidates = all_candidates[:LIMIT_RECORDS]
                 break
             
             # Pequeña pausa entre lotes para no sobrecargar la API
             await asyncio.sleep(2)
         
         # Segunda pasada: procesar las páginas que fallaron con tamaños más pequeños
-        if failed_pages and (MAX_RECUPERACION == 0 or len(all_candidates) < MAX_RECUPERACION):
+        if failed_pages and (LIMIT_RECORDS == 0 or len(all_candidates) < LIMIT_RECORDS):
             log_message(f"\n🔄 Iniciando procesamiento de {len(failed_pages)} páginas fallidas con tamaños reducidos...", True)
             recovered_candidates = await process_failed_pages(session, failed_pages)
             
             # Aplicar límite de recuperación si está configurado
-            if MAX_RECUPERACION > 0:
-                remaining_slots = MAX_RECUPERACION - len(all_candidates)
+            if LIMIT_RECORDS > 0:
+                remaining_slots = LIMIT_RECORDS - len(all_candidates)
                 if remaining_slots > 0:
                     recovered_candidates = recovered_candidates[:remaining_slots]
                     log_message(f"📊 Limitando recuperación a {remaining_slots} candidatos adicionales", True)
@@ -1225,13 +1225,13 @@ async def get_all_candidates_simple(session: aiohttp.ClientSession) -> List[Dict
         
         # Verificación final y procesamiento de páginas no procesadas
         missing_pages = set(range(1, total_pages + 1)) - processed_pages
-        if missing_pages and (MAX_RECUPERACION == 0 or len(all_candidates) < MAX_RECUPERACION):
+        if missing_pages and (LIMIT_RECORDS == 0 or len(all_candidates) < LIMIT_RECORDS):
             log_message(f"\n🔄 Iniciando procesamiento de {len(missing_pages)} páginas no procesadas...", True)
             recovered_candidates = await process_failed_pages(session, missing_pages)
             
             # Aplicar límite de recuperación si está configurado
-            if MAX_RECUPERACION > 0:
-                remaining_slots = MAX_RECUPERACION - len(all_candidates)
+            if LIMIT_RECORDS > 0:
+                remaining_slots = LIMIT_RECORDS - len(all_candidates)
                 if remaining_slots > 0:
                     recovered_candidates = recovered_candidates[:remaining_slots]
                     log_message(f"📊 Limitando recuperación a {remaining_slots} candidatos adicionales", True)

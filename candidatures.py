@@ -225,7 +225,7 @@ RETRY_DELAY = 2
 PAGE_SIZE = 100
 CONCURRENT_REQUESTS = 100
 BATCH_SIZE = 1000  # Aumentado para optimizar rendimiento
-LIMIT_RECORDS = 0  # Límite de registros para pruebas. Si es 0, trae todos los registros
+LIMIT_RECORDS = 1000  # Límite de registros para pruebas. Si es 0, trae todos los registros
 
 # Configuración de Base de Datos
 SQL_SERVER = os.getenv('SQL_SERVER', 'localhost')

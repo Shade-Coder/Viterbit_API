@@ -225,37 +225,37 @@ def create_users_table():
     
     cursor = conn.cursor()
     try:
-        # Eliminar la tabla si existe
+        # Verificar si la tabla existe
         cursor.execute("""
-        IF EXISTS (SELECT * FROM sysobjects WHERE name='Users' AND xtype='U')
-        DROP TABLE Users
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'Users'
         """)
-        
-        # Crear la tabla con la estructura necesaria
-        cursor.execute("""
-        CREATE TABLE Users (
-            id VARCHAR(50) PRIMARY KEY,
-            email NVARCHAR(255),
-            first_name NVARCHAR(255),
-            last_name NVARCHAR(255),
-            full_name NVARCHAR(255),
-            phone VARCHAR(50),
-            picture_url NVARCHAR(MAX),
-            status VARCHAR(50),
-            created_at DATETIME,
-            updated_at DATETIME,
-            last_login_at DATETIME,
-            department_id VARCHAR(50),
-            position NVARCHAR(255),
-            role VARCHAR(50),
-            custom_fields NVARCHAR(MAX)
-        )
-        """)
-        
-        conn.commit()
-        log_message("💾 Tabla Users creada exitosamente")
+        table_exists = cursor.fetchone()[0] > 0
+
+        if not table_exists:
+            # Crear la tabla con la estructura necesaria
+            cursor.execute("""
+            CREATE TABLE Users (
+                id VARCHAR(50) PRIMARY KEY,
+                first_name NVARCHAR(255),
+                last_name NVARCHAR(255),
+                full_name NVARCHAR(255),
+                email NVARCHAR(255),
+                reference VARCHAR(255),
+                phone NVARCHAR(255),
+                business_role VARCHAR(50),
+                picture_url NVARCHAR(MAX),
+                last_login_at DATETIME,
+                created_at DATETIME,
+                updated_at DATETIME
+            )
+            """)
+            conn.commit()
+            log_message("✅ Tabla Users creada exitosamente")
     except Exception as e:
-        log_message(f"Error al crear/actualizar la tabla: {e}")
+        log_message(f"❌ Error al crear la tabla Users: {e}")
+        conn.rollback()
     finally:
         cursor.close()
         conn.close()
@@ -343,79 +343,51 @@ def update_last_execution():
         conn.close()
 
 def flatten_user(user: Dict[str, Any]) -> Dict[str, Any]:
-    """Aplana y formatea los datos de un usuario para su almacenamiento en la base de datos.
-    
-    Esta función:
-    1. Extrae y formatea campos anidados
-    2. Convierte fechas a formato compatible con SQL Server
-    3. Maneja campos opcionales y valores por defecto
-    4. Procesa campos personalizados y arrays
+    """Aplana el objeto de usuario para almacenarlo en la base de datos.
     
     Args:
-        user (Dict[str, Any]): Datos del usuario a aplanar.
-    
-    Returns:
-        Dict[str, Any]: Datos del usuario aplanados y formateados.
-    """
-    try:
-        # Función para formatear fechas
-        def format_date(date_str):
-            if not date_str:
-                return None
-            try:
-                dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                return dt.strftime('%Y-%m-%d %H:%M:%S')
-            except (ValueError, AttributeError):
-                return None
-
-        # Procesar custom_fields
-        custom_fields = user.get('custom_fields', [])
-        if isinstance(custom_fields, list):
-            custom_fields_str = json.dumps(custom_fields, ensure_ascii=False)
-        else:
-            custom_fields_str = ''
-
-        # Crear diccionario base con los campos exactos del JSON
-        flattened = {
-            'id': str(user.get('id', '')),
-            'email': str(user.get('email', '')),
-            'first_name': str(user.get('first_name', '')),
-            'last_name': str(user.get('last_name', '')),
-            'full_name': str(user.get('full_name', '')),
-            'phone': str(user.get('phone', '')),
-            'picture_url': str(user.get('picture_url', '')),
-            'status': str(user.get('status', '')),
-            'created_at': format_date(user.get('created_at')),
-            'updated_at': format_date(user.get('updated_at')),
-            'last_login_at': format_date(user.get('last_login_at')),
-            'department_id': str(user.get('department_id', '')),
-            'position': str(user.get('position', '')),
-            'role': str(user.get('role', '')),
-            'custom_fields': custom_fields_str
-        }
+        user (Dict[str, Any]): Objeto de usuario original
         
-        return flattened
-    except Exception as e:
-        log_message(f"Error al aplanar el usuario: {e}")
-        return None
+    Returns:
+        Dict[str, Any]: Objeto de usuario aplanado
+    """
+    def format_date(date_str):
+        if not date_str:
+            return None
+        try:
+            return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            return None
+
+    return {
+        'id': user.get('id'),
+        'first_name': user.get('first_name'),
+        'last_name': user.get('last_name'),
+        'full_name': user.get('full_name'),
+        'email': user.get('email'),
+        'reference': user.get('reference'),
+        'phone': user.get('phone'),
+        'business_role': user.get('business_role'),
+        'picture_url': user.get('picture_url'),
+        'last_login_at': format_date(user.get('last_login_at')),
+        'created_at': format_date(user.get('created_at')),
+        'updated_at': format_date(user.get('updated_at'))
+    }
 
 def save_to_database(users: List[Dict[str, Any]]) -> None:
     """Guarda los usuarios en la base de datos.
     
-    Esta función:
-    1. Procesa cada usuario para aplanar su estructura
-    2. Inserta o actualiza los registros en la tabla Users
-    3. Maneja errores y reintentos para cada registro
-    4. Proporciona un resumen detallado del proceso
-    
     Args:
-        users (List[Dict[str, Any]]): Lista de usuarios a guardar.
+        users (List[Dict[str, Any]]): Lista de usuarios a guardar
     """
+    if not users:
+        log_message("⚠️ No hay usuarios para guardar")
+        return
+
     conn = get_db_connection()
     if not conn:
-        log_message("No se pudo conectar a la base de datos.")
         return
-    
+
     cursor = conn.cursor()
     try:
         # Preparar datos en lotes
@@ -431,18 +403,60 @@ def save_to_database(users: List[Dict[str, Any]]) -> None:
         for i in range(0, len(flat_users), batch_size):
             batch = flat_users[i:i + batch_size]
             batch_num = (i // batch_size) + 1
+            
+            # Obtener IDs de los usuarios en el lote
+            batch_ids = [user['id'] for user in batch]
+            
+            # Verificar IDs existentes en la base de datos
+            cursor.execute("""
+                SELECT id FROM Users 
+                WHERE id IN ({})
+            """.format(','.join(['?'] * len(batch_ids))), batch_ids)
+            
+            existing_ids = {row[0] for row in cursor.fetchall()}
+            new_ids = set(batch_ids) - existing_ids
+            
+            log_message(f"📊 Lote {batch_num}/{total_batches}:")
+            log_message(f"   - IDs existentes: {len(existing_ids)}")
+            log_message(f"   - IDs nuevos: {len(new_ids)}")
+            
+            # Construir la consulta MERGE
             columns = ', '.join(batch[0].keys())
             placeholders = ', '.join(['?' for _ in batch[0]])
-            sql = f"INSERT INTO Users ({columns}) VALUES ({placeholders})"
-            values = [tuple(user.values()) for user in batch]
-            cursor.executemany(sql, values)
-            conn.commit()
-            log_message(f"💾 Guardados {len(batch)} registros en la base de datos (Lote {batch_num}/{total_batches})")
+            update_columns = ', '.join([f"target.{col} = source.{col}" for col in batch[0].keys() if col != 'id'])
+            
+            merge_sql = f"""
+            MERGE INTO Users WITH (HOLDLOCK) AS target
+            USING (VALUES ({placeholders})) AS source ({columns})
+            ON target.id = source.id
+            WHEN MATCHED THEN
+                UPDATE SET {update_columns}
+            WHEN NOT MATCHED THEN
+                INSERT ({columns})
+                VALUES ({placeholders});
+            """
+            
+            # Ejecutar MERGE para cada usuario en el lote
+            for user in batch:
+                try:
+                    values = tuple(user.values())
+                    cursor.execute(merge_sql, values + values)
+                except Exception as e:
+                    log_message(f"❌ Error al procesar usuario {user.get('id', 'N/A')}: {str(e)}")
+            
+            try:
+                conn.commit()
+                log_message(f"💾 Guardados {len(batch)} registros en la base de datos (Lote {batch_num}/{total_batches})")
+            except Exception as e:
+                conn.rollback()
+                log_message(f"❌ Error al guardar lote {batch_num}: {str(e)}")
+                raise
         
         log_message(f"💾 Total de usuarios guardados: {len(flat_users)}")
     except Exception as e:
         log_message(f"Error al guardar en la base de datos: {e}")
         conn.rollback()
+        raise
     finally:
         cursor.close()
         conn.close()
